@@ -4,22 +4,71 @@
   <meta charset="UTF-8">
   <title>Excel → VietQR</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f6fa; }
+    header {
+      background: #0070f3;
+      color: white;
+      padding: 20px;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    header h1 { margin: 0; font-size: 24px; }
+    main { padding: 20px; }
+    #controls { margin-bottom: 20px; display: flex; gap: 15px; align-items: center; }
+    #upload { padding: 6px; }
+    #downloadAll {
+      background: #28a745;
+      border: none;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    #downloadAll:hover { background: #218838; }
     #qrs { display: flex; flex-wrap: wrap; gap: 20px; }
-    .qr-item { border: 1px solid #ccc; padding: 10px; text-align: center; }
-    .qr-item canvas { display: block; margin: auto; }
+    .qr-item {
+      border: 1px solid #ccc;
+      background: white;
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center;
+      width: 200px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .qr-item img { display: block; margin: auto; max-width: 150px; }
+    .qr-item a {
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 13px;
+      text-decoration: none;
+      color: #0070f3;
+    }
   </style>
 </head>
 <body>
-  <h2>Upload Excel → Tạo mã QR</h2>
-  <input type="file" id="upload" accept=".xlsx,.xls" />
+  <header>
+    <h1>Chuyển Excel → Mã QR VietQR</h1>
+    <p>Tải file Excel để sinh QR thanh toán, sau đó lưu về máy tính</p>
+  </header>
 
-  <div id="qrs"></div>
+  <main>
+    <div id="controls">
+      <input type="file" id="upload" accept=".xlsx,.xls" />
+      <button id="downloadAll" style="display:none;">⬇ Tải tất cả QR (ZIP)</button>
+    </div>
+
+    <div id="qrs"></div>
+  </main>
 
   <script>
+    let qrList = [];
+
     document.getElementById('upload').addEventListener('change', handleFile, false);
+    document.getElementById('downloadAll').addEventListener('click', downloadAll, false);
 
     function handleFile(e) {
       const file = e.target.files[0];
@@ -30,31 +79,43 @@
         const sheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet, {header:1});
 
-        // Xóa QR cũ
         document.getElementById('qrs').innerHTML = "";
+        qrList = [];
 
-        // Bỏ header (hàng đầu tiên)
         for (let i = 1; i < rows.length; i++) {
           const [AccountNumber, Bank, BankBin, Amount, AccountName, Remark] = rows[i];
-
           if (!AccountNumber || !BankBin) continue;
 
-          // Tạo link VietQR
-          const qrData = `https://img.vietqr.io/image/${BankBin}-${AccountNumber}-compact2.png?amount=${Amount || ''}&addInfo=${encodeURIComponent(Remark || '')}&accountName=${encodeURIComponent(AccountName || '')}`;
+          const qrUrl = `https://img.vietqr.io/image/${BankBin}-${AccountNumber}-compact2.png?amount=${Amount || ''}&addInfo=${encodeURIComponent(Remark || '')}&accountName=${encodeURIComponent(AccountName || '')}`;
 
-          // Tạo khung hiển thị
+          qrList.push({url: qrUrl, filename: `qr_${AccountNumber}.png`});
+
           const div = document.createElement('div');
           div.className = "qr-item";
           div.innerHTML = `
-            <p><b>${AccountName}</b><br>${AccountNumber} (${Bank})<br>Số tiền: ${Amount}</p>
-            <a href="${qrData}" download="qr_${AccountNumber}.png" target="_blank">
-              <img src="${qrData}" alt="QR" />
-            </a>
+            <p><b>${AccountName || ''}</b><br>${AccountNumber} (${Bank || ''})<br>Số tiền: ${Amount || ''}</p>
+            <img src="${qrUrl}" alt="QR" />
+            <a href="${qrUrl}" download="qr_${AccountNumber}.png">⬇ Lưu ảnh</a>
           `;
           document.getElementById('qrs').appendChild(div);
         }
+
+        if (qrList.length > 0) {
+          document.getElementById('downloadAll').style.display = "inline-block";
+        }
       };
       reader.readAsArrayBuffer(file);
+    }
+
+    async function downloadAll() {
+      const zip = new JSZip();
+      for (const qr of qrList) {
+        const response = await fetch(qr.url);
+        const blob = await response.blob();
+        zip.file(qr.filename, blob);
+      }
+      const content = await zip.generateAsync({type:"blob"});
+      saveAs(content, "all_qr_codes.zip");
     }
   </script>
 </body>
